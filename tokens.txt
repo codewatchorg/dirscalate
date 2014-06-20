@@ -1,0 +1,9 @@
+su
+pass
+pwd
+-p\s+
+auth
+cred
+token
+BEGIN\s+RSA\s+PRIVATE\s+KEY
+BEGIN\s+DSA\s+PRIVATE\s+KEY

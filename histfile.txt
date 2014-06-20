@@ -1,0 +1,12 @@
+.bash_history
+.mysql_history
+.lesshst
+.history
+.psql_history
+.ssh/id_rsa
+.ssh/id_dsa
+.sh_history
+.ksh_history
+.zsh_history
+.csh_history
+.tcsh_history
