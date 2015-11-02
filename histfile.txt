@@ -10,3 +10,8 @@
 .zsh_history
 .csh_history
 .tcsh_history
+.nano_history
+.sqlite_history
+.ssh/identity
+.zhistory
+.viminfo
